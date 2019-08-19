@@ -17,9 +17,10 @@ describe('note route tests', () => {
   afterAll(() => {
     return mongoose.connection.close();
   });
+
   it('can POST a new note', () => {
     return request(app)
-      .post('/api/v1/note')
+      .post('/api/v1/notes')
       .send({
         title: 'New Note!',
         body: 'I am a pretty new note'
