@@ -34,4 +34,25 @@ describe('note route tests', () => {
         });
       });
   });
+
+  it('can GET all notes', async() => {
+    const notes = await Note.create([
+      { title: 'a note', body: 'a note body' },
+      { title: 'another note', body: 'a note body' },
+      { title: 'anotherother note', body: 'a note body' }
+    ]);
+    return request(app)
+      .get('/api/v1/notes')
+      .then(res => {
+        const notesJSON = JSON.parse(JSON.stringify(notes));
+        notesJSON.forEach(note => {
+          expect(res.body).toContainEqual({
+            _id: expect.any(String),
+            __v: 0,
+            title: note.title,
+            body: note.body
+          });
+        });
+      });
+  });
 });
