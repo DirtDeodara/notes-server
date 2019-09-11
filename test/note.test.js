@@ -1,58 +1,110 @@
 require('dotenv').config();
 const request = require('supertest');
-const mongoose = require('mongoose');
-const connect = require('../lib/utils/connect');
 const app = require('../lib/app');
-const Note = require('../lib/models/Note');
+const client = require('../lib/utils/client');
+const child_process = require('child_process');
 
 describe('note route tests', () => {
-  beforeAll(() => {
-    connect();
-  });
-
   beforeEach(() => {
-    return mongoose.connection.dropDatabase();
+    child_process.execSync('npm run recreate-tables');
   });
 
   afterAll(() => {
-    return mongoose.connection.close();
+    return client.end();
   });
 
-  it('can POST a new note', () => {
-    return request(app)
-      .post('/api/v1/notes')
-      .send({
-        title: 'New Note!',
-        body: 'I am a pretty new note'
+  const TEST_NOTE = {
+    author: 'Nerd',
+    title: 'Zippity',
+    body: 'whozit whatzit'
+  };
+
+  const createNote = (note = TEST_NOTE) => request(app)
+    .post('/api/v1/notes')
+    .expect(200)
+    .send(note);
+
+  const testNote = note => {
+    expect(note).toEqual({
+      id: expect.any(Number),
+      author: 'Nerd',
+      title: 'Zippity',
+      body: 'whozit whatzit',
+      isPublished: false,
+      created: expect.any(String)
+    });
+  };
+
+  it('creates a note', () => {
+    return createNote()
+      .then(({ body }) => {
+        testNote(body);
+      });
+  });
+
+  it('gets a note by id', () => {
+    return createNote()
+      .then(({ body }) => {
+        return request(app)
+          .get(`/api/v1/notes/${body.id}`)
+          .expect(200);
       })
-      .then(res => {
-        expect(res.body).toEqual({
-          __v: 0,
-          _id: expect.any(String),
-          title: 'New Note!',
-          body: 'I am a pretty new note'
-        });
+      .then(({ body }) => {
+        testNote(body);
       });
   });
 
-  it('can GET all notes', async() => {
-    const notes = await Note.create([
-      { title: 'a note', body: 'a note body' },
-      { title: 'another note', body: 'a note body' },
-      { title: 'anotherother note', body: 'a note body' }
-    ]);
+  it('returns 404 on non-existant id', () => {
     return request(app)
-      .get('/api/v1/notes')
-      .then(res => {
-        const notesJSON = JSON.parse(JSON.stringify(notes));
-        notesJSON.forEach(note => {
-          expect(res.body).toContainEqual({
-            _id: expect.any(String),
-            __v: 0,
-            title: note.title,
-            body: note.body
+      .get('/api/v1/notes/100')
+      .expect(404);
+  });
+
+  it('gets a list of notes', () => {
+    return Promise.all([
+      createNote({ title: 'note uno', author: 'nerd', body: 'body uno' }),
+      createNote({ title: 'note dos', author: 'nerd', body: 'body dos' }),
+      createNote({ title: 'note tres', author: 'nerd', body: 'body tres' })
+    ])
+      .then(() => {
+        return request(app).get('/api/v1/notes')
+          .expect(200)
+          .then(({ body }) => {
+            expect(body.length).toBe(3);
           });
-        });
       });
   });
+
+  it('updates a note', () => {
+    return createNote()
+      .then(({ body }) => {
+        body.title = 'New Title';
+        return request(app)
+          .put(`/api/v1/notes/${body.id}`)
+          .send(body)
+          .expect(200);
+      })
+      .then(({ body }) => {
+        expect(body.title).toBe('New Title');
+      });
+  });
+
+  it('deletes a note', () => {
+    return createNote()
+      .then(({ body }) => {
+        return request(app)
+          .delete(`/api/v1/notes/${body.id}`)
+          .expect(200)
+          .then(({ body: removed }) => {
+            expect(removed).toEqual(body);
+            return body.id;
+          });
+      })
+      .then(id => {
+        return request(app)
+          .get(`/api/v1/notes/${id}`)
+          .expect(404);
+      });
+  });
+
 });
